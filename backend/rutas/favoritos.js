@@ -28,13 +28,13 @@ router.post('/', ah(async (req, res) => {
   if (typeof nombre !== 'string' || !nombre.trim() || nombre.length > 200) return res.status(400).json({ error: 'Nombre inválido.' });
   if (typeof url !== 'string' || url.length > 2000 || !urlHttp(url)) return res.status(400).json({ error: 'URL inválida.' });
   if (imagen != null && (typeof imagen !== 'string' || imagen.length > 2000 || !urlHttp(imagen))) return res.status(400).json({ error: 'Imagen inválida.' });
-  const precioNum = precio == null ? null : Number(precio);
-  if (precioNum !== null && (!Number.isFinite(precioNum) || precioNum < 0)) return res.status(400).json({ error: 'Precio inválido.' });
+  if (precio != null && (typeof precio !== 'string' || precio.length > 60)) return res.status(400).json({ error: 'Precio inválido.' });
+  const precioTexto = precio?.trim() || null;
 
   const favorito = await prisma.favorito.upsert({
     where: { idUsuario_urlOrigen: { idUsuario: req.usuarioId, urlOrigen: url } },
     update: {},
-    create: { idUsuario: req.usuarioId, nombreAlojamiento: nombre.trim(), precio: precioNum, urlOrigen: url, imagenUrl: imagen ?? null },
+    create: { idUsuario: req.usuarioId, nombreAlojamiento: nombre.trim(), precio: precioTexto, urlOrigen: url, imagenUrl: imagen ?? null },
   });
   res.status(201).json({ favorito });
 }));

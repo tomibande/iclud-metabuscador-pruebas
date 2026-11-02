@@ -107,11 +107,12 @@ el.form.addEventListener('submit', async (e) => {
   el.btnBuscar.disabled = true;
   mostrarCargando();
   try {
-    const r = await fetch('/metabuscar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
-    const datos = await r.json();
-    if (!datos.ok) return mostrarAviso('No pudimos buscar', datos.error || 'Error inesperado.', true);
-    estado.resultados = datos.resultados;
-    if (!datos.resultados.length) return mostrarAviso('Sin resultados', 'No encontramos alojamientos con esos filtros. Probá ampliar el precio o quitar algún servicio.');
+    const r = await fetch('/api/metabuscar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+    // El backend responde un arreglo cuando sale bien, y { error } cuando falla (400 / 429 / 502).
+    const datos = await r.json().catch(() => ({}));
+    if (!r.ok) return mostrarAviso('No pudimos buscar', datos.error || 'Error inesperado.', true);
+    estado.resultados = Array.isArray(datos) ? datos : [];
+    if (!estado.resultados.length) return mostrarAviso('Sin resultados', 'No encontramos alojamientos con esos filtros. Probá ampliar el precio o quitar algún servicio.');
     pintarResultados();
   } catch {
     mostrarAviso('Sin conexión', 'No pudimos conectar con el servidor. Revisá tu conexión e intentá de nuevo.', true);
@@ -130,7 +131,8 @@ el.res.addEventListener('click', async (e) => {
       const r = estado.resultados[Number(b.dataset.i)];
       const existente = esFavorito(r.url);
       if (existente) await api(`/api/favoritos/${existente.id}`, { method: 'DELETE' });
-      else await api('/api/favoritos', { method: 'POST', body: JSON.stringify({ nombre: r.nombre, precio: r.precioNumero, url: r.url, imagen: r.imagen }) });
+      // se guarda el precio tal cual lo muestra la tarjeta, que es lo que dijo la fuente
+      else await api('/api/favoritos', { method: 'POST', body: JSON.stringify({ nombre: r.nombre, precio: r.precio, url: r.url, imagen: r.imagen }) });
       await cargarFavoritos();
       pintarResultados();
     } else if (b.dataset.accion === 'quitar') {

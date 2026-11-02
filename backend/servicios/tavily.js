@@ -1,7 +1,14 @@
 // Traduce filtros -> consulta en lenguaje natural, busca en la web y devuelve texto crudo.
-// NO interpreta ni estructura nada.
+// NO interpreta ni estructura nada: de eso se encarga gemini.js.
+import { tavily } from '@tavily/core';
+
 const ETIQUETA_SERVICIO = { wifi: 'Wi-Fi', cocina: 'cocina', estacionamiento: 'estacionamiento' };
 
+// El cliente se crea al primer uso, cuando el .env ya está cargado (no al importar el archivo).
+let cliente;
+const clientePorDefecto = () => (cliente ??= tavily({ apiKey: process.env.TAVILY_API_KEY }));
+
+// Función pura: los mismos filtros dan siempre la misma consulta. Por eso se testea sola.
 export function construirConsulta(f) {
   const partes = [`Hoteles y alojamientos en ${f.destino} para ${f.huespedes} huéspedes con precio por noche`];
   if (f.precioMax) partes.push(`hasta ${f.precioMax} ${process.env.MONEDA_FILTRO || 'USD'} por noche`);
@@ -10,40 +17,38 @@ export function construirConsulta(f) {
   return partes.join(' ');
 }
 
-export async function buscarEnWeb(filtros) {
-  const resp = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.TAVILY_API_KEY}`,
-    },
-    body: JSON.stringify({
-      query: construirConsulta(filtros),
-      search_depth: 'basic',
-      max_results: 10,
-      include_answer: false,
-      include_images: true,
-      include_image_descriptions: true,
-    }),
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!resp.ok) throw new Error(`Tavily respondió ${resp.status}`);
-
-  const data = await resp.json();
-  const resultados = data.results ?? [];
-  const imagenes = (data.images ?? [])
+// Separada de la llamada de red a propósito: se puede testear sin salir a internet.
+// Guardamos las URLs e imágenes en Sets porque después hay que verificar contra ellos
+// que Gemini no haya inventado ninguna (ver lib/filtrar.js).
+export function armarTextoCrudo({ results = [], images = [] } = {}) {
+  const imagenes = images
     .map((i) => (typeof i === 'string' ? { url: i, descripcion: '' } : { url: i.url, descripcion: i.description ?? '' }))
     .filter((i) => i.url);
 
   const texto =
-    resultados.map((r) => `FUENTE: ${r.url}\nTITULO: ${r.title}\nCONTENIDO: ${r.content}`).join('\n---\n') +
+    results.map((r) => `FUENTE: ${r.url}\nTITULO: ${r.title}\nCONTENIDO: ${r.content}`).join('\n---\n') +
     (imagenes.length
       ? '\n=== IMAGENES ===\n' + imagenes.map((i) => `IMAGEN: ${i.url} | ${i.descripcion}`).join('\n')
       : '');
 
   return {
     texto,
-    urls: new Set(resultados.map((r) => r.url)),
+    urls: new Set(results.map((r) => r.url)),
     imagenes: new Set(imagenes.map((i) => i.url)),
   };
+}
+
+// obtenerCliente se puede reemplazar en los tests para no gastar créditos de Tavily.
+export async function buscarEnWeb(filtros, obtenerCliente = clientePorDefecto) {
+  const respuesta = await obtenerCliente().search(construirConsulta(filtros), {
+    // "basic" en desarrollo gasta menos créditos; "advanced" da mejores resultados en producción.
+    searchDepth: process.env.TAVILY_DEPTH || 'basic',
+    maxResults: 10,
+    includeAnswer: false,
+    includeImages: true,
+    includeImageDescriptions: true,
+    // OJO: el SDK espera SEGUNDOS, no milisegundos. Si Tavily tarda más, corta y el endpoint responde 502.
+    timeout: Number(process.env.TAVILY_TIMEOUT_S || 20),
+  });
+  return armarTextoCrudo(respuesta);
 }

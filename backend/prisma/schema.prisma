@@ -21,7 +21,10 @@ model Favorito {
   idUsuario         Int
   usuario           Usuario  @relation(fields: [idUsuario], references: [id], onDelete: Cascade)
   nombreAlojamiento String
-  precio            Float?
+  // Texto tal cual lo publicó la fuente ("USD 82 por noche", "No disponible").
+  // No se guarda como número: cada sitio usa su moneda y su formato, y convertir
+  // sería inventar un dato que la fuente no dio.
+  precio            String?
   urlOrigen         String
   imagenUrl         String?
   fechaGuardado     DateTime @default(now())

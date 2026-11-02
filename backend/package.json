@@ -5,17 +5,20 @@
   "description": "Metabuscador de alojamientos ICLUD (Express + Tavily + Gemini + Prisma)",
   "type": "module",
   "main": "server.js",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "test": "node --test",
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=65 --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"prisma/**\"",
     "db:init": "prisma migrate dev --name init",
     "postinstall": "prisma generate"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
     "@prisma/client": "^6.0.0",
+    "@tavily/core": "^0.7.14",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "dotenv": "^16.4.5",
