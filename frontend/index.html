@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ICLUD · Metabuscador de alojamientos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="barra">
+    <a class="marca" href="/">ICLUD</a>
+    <nav class="cuenta" id="cuenta"></nav>
+  </header>
+
+  <main class="layout">
+    <form id="form" class="filtros" novalidate>
+      <h1>Encontrá dónde dormir</h1>
+
+      <label>Destino
+        <input name="destino" type="text" maxlength="80" required placeholder="Ej: Bariloche, Argentina">
+      </label>
+
+      <div class="fila">
+        <label>Llegada <input name="checkIn" type="date"></label>
+        <label>Salida <input name="checkOut" type="date"></label>
+      </div>
+
+      <div class="fila">
+        <label>Huéspedes <input name="huespedes" type="number" min="1" max="20" value="2"></label>
+        <label>Precio máx. por noche (USD) <input name="precioMax" type="number" min="1" step="1" placeholder="Sin límite"></label>
+      </div>
+
+      <fieldset>
+        <legend>Servicios</legend>
+        <label class="check"><input type="checkbox" name="servicios" value="wifi"> Wi-Fi</label>
+        <label class="check"><input type="checkbox" name="servicios" value="cocina"> Cocina</label>
+        <label class="check"><input type="checkbox" name="servicios" value="estacionamiento"> Estacionamiento</label>
+      </fieldset>
+
+      <button type="submit" class="primario" id="btn-buscar">Buscar alojamientos</button>
+    </form>
+
+    <section class="panel" aria-live="polite">
+      <div class="panel-cab">
+        <h2 id="titulo-panel">Resultados</h2>
+        <button type="button" class="enlace" id="btn-favoritos" hidden>Ver mis favoritos</button>
+      </div>
+      <div id="resultados"></div>
+    </section>
+  </main>
+
+  <dialog id="dlg-auth">
+    <form id="form-auth" novalidate>
+      <h2 id="auth-titulo">Iniciar sesión</h2>
+      <label id="lbl-nombre" hidden>Nombre <input name="nombre" maxlength="60" autocomplete="name"></label>
+      <label>Email <input name="email" type="email" maxlength="120" autocomplete="email" required></label>
+      <label>Contraseña <input name="password" type="password" minlength="8" maxlength="72" autocomplete="current-password" required></label>
+      <p class="error" id="auth-error" role="alert"></p>
+      <div class="acciones">
+        <button type="submit" class="primario" id="auth-enviar">Entrar</button>
+        <button type="button" class="enlace" id="auth-cambiar">Crear una cuenta</button>
+        <button type="button" class="enlace" id="auth-cerrar">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
