@@ -1,4 +1,5 @@
-// Orquesta el endpoint, valida entrada y devuelve siempre el mismo shape: { ok, resultados, error? }
+// Orquesta el endpoint y valida la entrada.
+// El 200 devuelve un ARREGLO pelado (decision del equipo); los errores van como { error }.
 // Flujo (DFD nivel 2): validar -> tavily.js -> gemini.js -> armar respuesta.
 import './lib/env.js'; // tiene que ir primero: carga backend/.env
 import express from 'express';
@@ -13,6 +14,7 @@ import { buscarEnWeb } from './servicios/tavily.js';
 import { estructurar } from './servicios/gemini.js';
 import authRouter from './rutas/auth.js';
 import favoritosRouter from './rutas/favoritos.js';
+import adminRouter from './rutas/admin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +59,7 @@ export function crearApp({ buscar = buscarEnWeb, estructurarTexto = estructurar 
 
   app.use('/api/auth', authRouter);
   app.use('/api/favoritos', favoritosRouter);
+  app.use('/api/admin', adminRouter);
 
   // Manejador final: nunca devuelve HTML ni tira abajo el servidor
   // eslint-disable-next-line no-unused-vars

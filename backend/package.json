@@ -6,14 +6,16 @@
   "type": "module",
   "main": "server.js",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.8.0"
   },
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
     "test": "node --test --experimental-test-coverage --test-coverage-lines=65 --test-coverage-exclude=\"test/**\" --test-coverage-exclude=\"prisma/**\"",
-    "db:init": "prisma migrate dev --name init",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "db:dev": "prisma migrate dev",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",

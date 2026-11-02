@@ -54,7 +54,7 @@ Frontend (hoy servido por el backend como estático)
 Backend Node.js + Express
    ├──► Tavily API  (@tavily/core)  → búsqueda web, texto crudo + URLs
    ├──► Gemini API  (@google/genai) → estructura el texto en JSON validado por esquema
-   └──► Prisma + SQLite (local)     → usuarios y favoritos
+   └──► Prisma + PostgreSQL         → usuarios, roles y favoritos
 ```
 
 El frontend **nunca** llama a Tavily, Gemini ni a la base: las claves viven solo en el backend.
@@ -118,13 +118,16 @@ backend/
 │   ├── filtrar.js          filtrarResultados(), recortarDescripcion(), MAX_RESULTADOS
 │   └── asyncHandler.js     ah(): manda errores async al manejador de Express 4
 ├── rutas/
-│   ├── auth.js             registro, login, logout, /yo, requiereAuth
+│   ├── auth.js             registro, login, logout (invalida token), /yo, requiereAuth, requiereRol
+│   ├── admin.js            GET /api/admin/usuarios (solo rol admin, 403 si no)
 │   └── favoritos.js        GET, POST, DELETE (todo filtrado por el usuario del token)
 ├── servicios/
 │   ├── tavily.js           construirConsulta(), armarTextoCrudo(), buscarEnWeb()
 │   └── gemini.js           estructurar() con responseSchema
-├── prisma/schema.prisma    Usuario, Favorito
-├── test/                   33 tests (ver abajo)
+├── prisma/
+│   ├── schema.prisma       Usuario (con rol y versionToken), Favorito
+│   └── migrations/         migraciones versionadas
+├── test/                   45 tests (ver abajo)
 └── .env.example            sin valores
 frontend/
 ├── index.html              formulario de filtros, panel de resultados, modal de auth
@@ -142,7 +145,7 @@ frontend/
 - XSS: `esc()` y `urlSegura()` en el front. Todo lo que viene de la web se trata como no confiable.
 - `.env.example` versionado y `.gitignore` que no tapa el ejemplo.
 
-### Tests: 33 en verde, 87,97 % de líneas
+### Tests: 45 en verde, 91,03 % de líneas
 ```
 cd backend && npm test
 ```
@@ -152,10 +155,13 @@ Verificado que con un umbral mayor el comando sale con código 1, así el pipeli
 - 25 unitarios: `construirConsulta`, `armarTextoCrudo`, validación de filtros (fechas, huéspedes,
   precio, servicios), corte en 6, recorte de descripción, forma exacta de los campos, detección de
   URLs inventadas, duplicados, y que no se llame a Gemini si la web no devolvió ninguna fuente.
-- 8 de integración (`test/favoritos.test.js`) contra una **base de pruebas separada** que el propio
-  test crea con `prisma db push` (así `npm test` anda igual en Windows, Linux y Mac). Cubren 401 sin
-  sesión, alta 201, el precio conservado como texto, no duplicar, 400 por URL `javascript:`, 400 por
-  precio no textual, y que un usuario no pueda borrar el favorito de otro.
+- 20 de integración (`test/favoritos.test.js` y `test/roles.test.js`) contra una **Postgres de
+  pruebas separada** (`DATABASE_URL_TEST`), cada archivo en su propio schema para poder correr en
+  paralelo. Aplican las migraciones reales con `prisma migrate deploy`. Cubren 401 sin sesión, alta
+  201, el precio conservado como texto, no duplicar, 400 por URL `javascript:`, 400 por precio no
+  textual, **404 al borrar un favorito ajeno o inexistente**, el rol por defecto, que no se pueda
+  pedir el rol admin al registrarse, 401/403 en el panel de admin, que el panel no exponga el
+  passwordHash, y que el logout invalide el token sin tocar la sesión de otro usuario.
 
 ---
 
@@ -176,33 +182,48 @@ Verificado que con un umbral mayor el comando sale con código 1, así el pipeli
 
 ## 6. Lo que falta, en orden de gravedad
 
-1. **4.3 Persistencia remota — no cumple.** `schema.prisma` usa `provider = "sqlite"`. El checklist
-   pide Postgres remota (elegida: Prisma Postgres). Falta también la carpeta `migrations/`:
-   el proyecto nunca generó migraciones, se usa `npm run db:init`.
-   Correr `git rm --cached backend/prisma/dev.db`: está commiteado y el `*.db` del `.gitignore` no
-   lo saca solo.
-2. **4.4 Roles — no cumple.** `Usuario` no tiene campo `rol`. Sin eso no hay dos niveles de acceso
-   ni 403. Prohibido `if (usuario == "admin")`: el rol va persistido en la base.
-   Además **el logout no invalida nada**: `res.clearCookie` borra la cookie del navegador, pero el
-   JWT sigue válido 7 días. El checklist pide invalidación efectiva (versión de token en el usuario
-   o lista de revocados).
-3. **4.1 Frontend desacoplado — no cumple, y está acoplado a propósito.** Es HTML/CSS/JS vanilla sin
-   build, y `server.js` lo sirve con `express.static`, con rutas relativas. Migrar a Vite arrastra
-   tres cambios juntos: build propio, `VITE_API_URL` por configuración, y CORS con `credentials`.
-   Ojo: la cookie es `sameSite: 'lax'`, que **deja de funcionar cross-site**.
-4. **4.6 Despliegue y CI/CD — no existe.** No hay `.github/`. Falta pipeline que instale, buildee,
-   corra tests con el umbral y despliegue solo si todo pasa, más **una ejecución fallida y su
-   corrección** en el historial. Comparar 2 plataformas de deploy y documentar la elección.
-5. **4.8 Repositorio.** No hay README. `main` no está protegida. Y hay un problema que no se arregla
-   después: **un único commit squasheado de un solo autor**. El checklist pide commits de cada
-   integrante con su usuario, distribuidos en el tiempo. Empezar ya.
-6. **4.9 Documentación.** Falta `/docs`: DFD 0/1/2, casos de uso UML con narrativa de los 3
-   principales, DER que coincida con la base real, diagrama de arquitectura y despliegue, y
-   documento de decisiones técnicas (≤ 2 páginas, con declaración de uso de IA).
+Estado al 2 de noviembre de 2026.
 
-### Detalle menor pendiente
-Borrar un favorito ajeno devuelve 200 aunque no borre nada (`deleteMany` con `where` filtrado por
-usuario). Es seguro, pero según el checklist convendría 404.
+### Resuelto (falta probarlo contra los servicios reales)
+
+- **4.3 Persistencia remota — código listo.** `schema.prisma` usa `provider = "postgresql"`, con
+  `prisma/migrations/20261102210201_init_postgres_roles/`. `dev.db` salió del index.
+  **Pendiente:** apuntar `DATABASE_URL` a la Prisma Postgres real y correr `npm run db:deploy`
+  contra ella. Hasta hoy solo se probó contra una Postgres local.
+- **4.4 Roles — cumple.** `Usuario.rol` es un enum persistido (`usuario` | `admin`, default
+  `usuario`), `requiereRol()` devuelve 403, y `GET /api/admin/usuarios` es la sección protegida.
+  El rol se lee de la base en cada pedido, no del token, y no se puede pedir al registrarse.
+  El logout **sí invalida**: `Usuario.versionToken` viaja dentro del JWT y el logout lo incrementa.
+- **4.6 CI/CD — pipeline escrito.** `.github/workflows/ci.yml`: `npm ci`, migraciones y los 45
+  tests con el umbral, contra una Postgres de servicio. El deploy depende del job de tests y solo
+  corre en `main`. **Pendiente:** crear el servicio en Render, cargar el secret
+  `RENDER_DEPLOY_HOOK`, y que quede en el historial **una ejecución fallida y su corrección**
+  (no borrar la primera corrida roja: es parte del entregable).
+- **4.9 Documentación — cumple.** `/docs` con DFD 0/1/2, casos de uso UML y narrativa de 3, DER
+  que coincide con la base real, arquitectura y despliegue, decisiones técnicas con declaración
+  de uso de IA, y la comparación de plataformas.
+- **README** en la raíz.
+- **Detalle menor:** borrar un favorito ajeno o inexistente ahora devuelve **404**.
+
+### Sigue sin cumplir
+
+1. **4.8 Commits por integrante — no se puede recuperar.** El checklist pide commits de cada uno
+   de los 6, con su usuario, distribuidos en el tiempo. El repo tiene commits de un solo autor y
+   la entrega es inmediata. **No falsificar autoría ni fechas.** Lo que queda: que cada integrante
+   configure `git config user.name/user.email` con su cuenta de GitHub y que todo cambio nuevo lo
+   pushee su autor real.
+2. **4.8 `main` no está protegida.** Settings → Branches → Add rule. Son dos minutos y lo hace
+   quien administre el repo.
+3. **4.1 Frontend desacoplado — no cumple, y se decidió no migrarlo.** Las razones y los tres
+   cambios que arrastra están en `docs/decisiones-tecnicas.md` (decisión 8). Si se retoma: build
+   con Vite, `VITE_API_URL` por configuración, CORS con `credentials`, y la cookie de `sameSite:
+   'lax'` a `'none'` + `secure`, que **deja de funcionar cross-site** si no se cambia.
+4. **Verificación de punta a punta con las APIs reales — nunca se hizo.** No se ejecutó todavía
+   una búsqueda real contra Tavily y Gemini, porque las claves no estaban cargadas en el entorno
+   y los dos dominios estaban bloqueados por la política de red. Es lo primero a hacer cuando se
+   destrabe: una sola búsqueda, y revisar que las URLs abran alojamientos reales, que los precios
+   sean los de la fuente, y que no vengan más de 6 resultados ni descripciones de más de 25
+   palabras.
 
 ---
 
@@ -215,7 +236,8 @@ Copiar `backend/.env.example` a `backend/.env` y completar. **Nunca commitear `.
 | `TAVILY_API_KEY` | sí | `tvly-...` |
 | `GEMINI_API_KEY` | sí | |
 | `GEMINI_MODEL` | sí | verificar el flash vigente; la familia 1.5 da 404 |
-| `DATABASE_URL` | sí | |
+| `DATABASE_URL` | sí | Postgres. Cadena de Prisma Postgres en producción |
+| `DATABASE_URL_TEST` | solo tests | Postgres de **pruebas**: los tests la vacían. Nunca apuntarla a producción |
 | `JWT_SECRET` | sí | |
 | `PORT` | no | 3000 |
 | `MONEDA_FILTRO` | no | USD |

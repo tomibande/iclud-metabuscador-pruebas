@@ -42,7 +42,11 @@ router.post('/', ah(async (req, res) => {
 router.delete('/:id', ah(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'Id inválido.' });
-  await prisma.favorito.deleteMany({ where: { id, idUsuario: req.usuarioId } });
+  // El dueño sale del token, nunca del pedido: si el favorito es de otro usuario
+  // (o no existe) no se borra nada. Ese caso se informa como 404 y no como 200,
+  // para no decirle al cliente que borró algo que sigue estando.
+  const { count } = await prisma.favorito.deleteMany({ where: { id, idUsuario: req.usuarioId } });
+  if (count === 0) return res.status(404).json({ error: 'Ese favorito no existe.' });
   res.json({ ok: true });
 }));
 

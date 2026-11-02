@@ -1,0 +1,91 @@
+# Integración continua de ICLUD.
+# Instala, corre los 45 tests con el umbral de cobertura y recién si todo pasa
+# habilita el despliegue. Si los tests fallan, el pipeline corta acá.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests y cobertura
+    runs-on: ubuntu-latest
+
+    # Los tests de integración necesitan una Postgres de verdad.
+    # Es una base descartable que vive solo mientras corre el job.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: iclud_test
+        ports:
+          - 5432:5432
+        # Sin esto el job puede arrancar antes de que la base acepte conexiones.
+        # El -U postgres es obligatorio: sin el, pg_isready intenta conectarse con
+        # el usuario del sistema (root), que no existe en Postgres, el health check
+        # nunca pasa y el job muere esperando a la base.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # npm ci respeta el package-lock: instala las versiones exactas, no "las últimas".
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Aplicar las migraciones en la base de pruebas
+        run: npm run db:deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/iclud_test?schema=public
+
+      # Tavily y Gemini están mockeados: el pipeline NO gasta créditos.
+      # JWT_SECRET es descartable, solo para firmar tokens durante los tests.
+      - name: Correr los tests con cobertura
+        run: npm test
+        env:
+          DATABASE_URL_TEST: postgresql://postgres:postgres@127.0.0.1:5432/iclud_test
+          JWT_SECRET: secreto-descartable-de-ci
+
+  deploy:
+    name: Desplegar
+    runs-on: ubuntu-latest
+    # Depende del job de tests: si están en rojo, no se despliega.
+    needs: test
+    # Y solo desde main: una rama de trabajo no toca producción.
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disparar el despliegue
+        # El hook lo da la plataforma elegida (ver docs/decisiones-tecnicas.md).
+        # Se guarda como secret del repositorio: Settings > Secrets and variables > Actions.
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "Falta el secret RENDER_DEPLOY_HOOK: configurarlo para habilitar el despliegue."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK"
+          echo "Despliegue disparado."

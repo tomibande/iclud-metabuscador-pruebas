@@ -1,26 +1,17 @@
-// Tests de integración: corren contra una base de PRUEBAS (DATABASE_URL_TEST), nunca la de producción.
+// Tests de integración de FAVORITOS.
+// Corren contra una Postgres de PRUEBAS (DATABASE_URL_TEST), nunca la de producción.
 // Cada test limpia lo suyo, así no dependen del orden en que se ejecutan.
 import test, { before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { prepararBase, crearCliente } from './ayuda-integracion.js';
 
-import { execSync } from 'node:child_process';
-
-// Base de PRUEBAS separada: un archivo propio, nunca la base de desarrollo ni la de producción.
-// Se puede apuntar a otra con DATABASE_URL_TEST (por ejemplo, en el pipeline).
-process.env.DATABASE_URL = process.env.DATABASE_URL_TEST || 'file:./prisma/test.db';
-process.env.JWT_SECRET ??= 'secreto-solo-para-tests';
-
-// Crea las tablas antes de empezar. Se hace acá y no en un script de npm para que
-// `npm test` funcione igual en Windows, Linux y Mac, sin sintaxis propia del shell.
-execSync('npx prisma db push --skip-generate --accept-data-loss', {
-  env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-  stdio: 'ignore',
-});
+prepararBase('test_favoritos');
 
 const { crearApp } = await import('../server.js');
 const { prisma } = await import('../lib/db.js');
 
 let servidor, base;
+const { pedir, registrarse } = crearCliente(() => base);
 
 before(() => {
   servidor = crearApp().listen(0);
@@ -33,21 +24,6 @@ after(async () => {
 beforeEach(async () => {
   await prisma.favorito.deleteMany();
   await prisma.usuario.deleteMany();
-});
-
-// Guarda la cookie de sesión para mandarla en los pedidos siguientes.
-async function registrarse(email = 'ana@ejemplo.com') {
-  const r = await fetch(`${base}/api/auth/registro`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre: 'Ana', email, password: 'clave-larga-123' }),
-  });
-  assert.equal(r.status, 201);
-  return r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-}
-
-const pedir = (ruta, cookie, opciones = {}) => fetch(`${base}${ruta}`, {
-  ...opciones,
-  headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...opciones.headers },
 });
 
 const UNO = { nombre: 'Hostería del Ñire', precio: 'USD 82 por noche', url: 'https://ejemplo.test/nire', imagen: null };
@@ -97,17 +73,33 @@ test('rechaza un precio que no sea texto con 400', async () => {
   assert.equal(r.status, 400);
 });
 
-test('un usuario no puede borrar el favorito de otro', async () => {
+test('un usuario no puede borrar el favorito de otro: recibe 404', async () => {
   const cookieAna = await registrarse('ana@ejemplo.com');
   const alta = await pedir('/api/favoritos', cookieAna, { method: 'POST', body: JSON.stringify(UNO) });
   const { favorito } = await alta.json();
 
   const cookieBeto = await registrarse('beto@ejemplo.com');
-  await pedir(`/api/favoritos/${favorito.id}`, cookieBeto, { method: 'DELETE' });
+  const r = await pedir(`/api/favoritos/${favorito.id}`, cookieBeto, { method: 'DELETE' });
+
+  // 404 y no 200: Beto no tiene por qué saber que ese favorito existe, y tampoco
+  // hay que decirle que borró algo que sigue estando.
+  assert.equal(r.status, 404);
 
   // el favorito de Ana sigue ahí: el id del dueño sale del token, no del pedido
   const { favoritos } = await (await pedir('/api/favoritos', cookieAna)).json();
   assert.equal(favoritos.length, 1);
+});
+
+test('borrar un favorito que no existe devuelve 404', async () => {
+  const cookie = await registrarse();
+  const r = await pedir('/api/favoritos/99999', cookie, { method: 'DELETE' });
+  assert.equal(r.status, 404);
+});
+
+test('borrar con un id que no es número devuelve 400', async () => {
+  const cookie = await registrarse();
+  const r = await pedir('/api/favoritos/abc', cookie, { method: 'DELETE' });
+  assert.equal(r.status, 400);
 });
 
 test('el dueño sí puede borrar su favorito', async () => {

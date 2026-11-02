@@ -3,8 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// Dos niveles de acceso (checklist 4.4). El rol va PERSISTIDO en la base:
+// nunca se decide por el nombre o el email del usuario.
+enum Rol {
+  usuario
+  admin
 }
 
 model Usuario {
@@ -12,6 +19,12 @@ model Usuario {
   nombre        String
   email         String     @unique
   passwordHash  String
+  rol           Rol        @default(usuario)
+  // Permite invalidar sesiones de verdad. El JWT lleva adentro la versión con la
+  // que se emitió; el logout incrementa este número y así todos los tokens
+  // anteriores dejan de validar, aunque no hayan vencido todavía.
+  // Borrar la cookie no alcanza: el token sigue siendo válido 7 días.
+  versionToken  Int        @default(0)
   fechaRegistro DateTime   @default(now())
   favoritos     Favorito[]
 }
