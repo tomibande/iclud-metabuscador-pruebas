@@ -31,25 +31,25 @@ export function crearApp({ buscar = buscarEnWeb, estructurarTexto = estructurar 
     standardHeaders: true,
     legacyHeaders: false,
     handler: (_req, res) =>
-      res.status(429).json({ ok: false, resultados: [], error: 'Demasiadas búsquedas seguidas. Esperá un minuto.' }),
+      res.status(429).json({ error: 'Demasiadas búsquedas seguidas. Esperá un minuto.' }),
   });
 
-  app.post('/metabuscar', limitadorBusqueda, ah(async (req, res) => {
+  // Responde SIEMPRE un arreglo cuando sale bien (vacío si no hubo resultados: eso no es un error).
+  // Los errores viajan como { error } con 400 / 429 / 502.
+  app.post('/api/metabuscar', limitadorBusqueda, ah(async (req, res) => {
     const { valor: filtros, error } = validarFiltros(req.body);
-    if (error) return res.status(400).json({ ok: false, resultados: [], error });
+    if (error) return res.status(400).json({ error });
 
     try {
       const { texto, urls, imagenes } = await buscar(filtros);
-      if (urls.size === 0) return res.json({ ok: true, resultados: [] }); // 0 resultados no es un error
+      if (urls.size === 0) return res.json([]); // la web no devolvió nada: 200 con arreglo vacío
 
       const crudos = await estructurarTexto(texto, filtros);
-      const moneda = (process.env.MONEDA_FILTRO || 'USD').toUpperCase();
-      res.json({ ok: true, resultados: filtrarResultados(crudos, filtros, { urls, imagenes }, moneda) });
+      res.json(filtrarResultados(crudos, filtros, { urls, imagenes }));
     } catch (e) {
-      console.error('Fallo en /metabuscar:', e.message);
+      // El detalle solo al log del servidor; al usuario un mensaje genérico.
+      console.error('Fallo en /api/metabuscar:', e);
       res.status(502).json({
-        ok: false,
-        resultados: [],
         error: 'No pudimos completar la búsqueda en este momento. Probá de nuevo en unos minutos.',
       });
     }
@@ -64,8 +64,6 @@ export function crearApp({ buscar = buscarEnWeb, estructurarTexto = estructurar 
     const status = err.status && err.status < 500 ? err.status : 500;
     if (status === 500) console.error(err);
     res.status(status).json({
-      ok: false,
-      resultados: [],
       error: status === 500 ? 'Error interno del servidor.' : 'Solicitud inválida.',
     });
   });

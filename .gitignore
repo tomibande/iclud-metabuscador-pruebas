@@ -1,6 +1,11 @@
-backend/node_modules
-backend/.env
+node_modules/
 
-.env*
-./backend/.env
-./backend/.env.example
+# Credenciales: se ignora cualquier .env real...
+.env
+.env.*
+# ...pero el ejemplo sin valores SÍ se versiona.
+!.env.example
+
+# Base local de desarrollo (no es la base compartida del proyecto)
+*.db
+*.db-journal
