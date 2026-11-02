@@ -40,7 +40,10 @@ usuario marca como **favorito**, junto con su fecha de guardado.
 
 ## Puesta en marcha
 
-Hace falta **Node.js 20 o superior** y una base **PostgreSQL**.
+Hace falta **Node.js 22.8 o superior** y una base **PostgreSQL**.
+
+> La versión mínima la impone `npm test`: las opciones de umbral de cobertura
+> (`--test-coverage-lines`) existen recién desde Node 22.8.
 
 ### 1. Instalar dependencias
 
