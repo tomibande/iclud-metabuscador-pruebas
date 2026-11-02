@@ -131,8 +131,8 @@ el.res.addEventListener('click', async (e) => {
       const r = estado.resultados[Number(b.dataset.i)];
       const existente = esFavorito(r.url);
       if (existente) await api(`/api/favoritos/${existente.id}`, { method: 'DELETE' });
-      // precio va null: el shape acordado trae el precio como texto ('USD 120') y no es comparable como número
-      else await api('/api/favoritos', { method: 'POST', body: JSON.stringify({ nombre: r.nombre, precio: null, url: r.url, imagen: r.imagen }) });
+      // se guarda el precio tal cual lo muestra la tarjeta, que es lo que dijo la fuente
+      else await api('/api/favoritos', { method: 'POST', body: JSON.stringify({ nombre: r.nombre, precio: r.precio, url: r.url, imagen: r.imagen }) });
       await cargarFavoritos();
       pintarResultados();
     } else if (b.dataset.accion === 'quitar') {

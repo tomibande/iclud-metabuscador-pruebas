@@ -9,3 +9,4 @@ node_modules/
 # Base local de desarrollo (no es la base compartida del proyecto)
 *.db
 *.db-journal
+prisma/test.db
