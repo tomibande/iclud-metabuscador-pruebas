@@ -26,8 +26,11 @@ jobs:
         ports:
           - 5432:5432
         # Sin esto el job puede arrancar antes de que la base acepte conexiones.
+        # El -U postgres es obligatorio: sin el, pg_isready intenta conectarse con
+        # el usuario del sistema (root), que no existe en Postgres, el health check
+        # nunca pasa y el job muere esperando a la base.
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
